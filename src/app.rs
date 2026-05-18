@@ -4,6 +4,7 @@ use std::time::Instant;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::widgets::TableState;
 
+use crate::input::TextInput;
 use crate::model::*;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -86,9 +87,9 @@ pub struct App {
     pub direct_focus_always: bool,
 
     // ACL edit
-    pub edit_name: String,
+    pub edit_name: TextInput,
     pub edit_type_index: usize,
-    pub edit_values: String,
+    pub edit_values: TextInput,
     pub edit_case_insensitive: bool,
     pub edit_field: InputField,
 
@@ -100,10 +101,10 @@ pub struct App {
     pub access_focus_available: bool,
 
     // Auth edit
-    pub auth_program: String,
-    pub auth_children: String,
-    pub auth_realm: String,
-    pub auth_ttl: String,
+    pub auth_program: TextInput,
+    pub auth_children: TextInput,
+    pub auth_realm: TextInput,
+    pub auth_ttl: TextInput,
     pub auth_field: InputField,
 }
 
@@ -124,9 +125,9 @@ impl App {
             always_direct_state: TableState::default(),
             never_direct_state: TableState::default(),
             direct_focus_always: true,
-            edit_name: String::new(),
+            edit_name: TextInput::default(),
             edit_type_index: 0,
-            edit_values: String::new(),
+            edit_values: TextInput::default(),
             edit_case_insensitive: false,
             edit_field: InputField::Name,
             access_action: AccessAction::Allow,
@@ -134,10 +135,10 @@ impl App {
             access_available_cursor: 0,
             access_selected_cursor: 0,
             access_focus_available: true,
-            auth_program: String::new(),
-            auth_children: String::new(),
-            auth_realm: String::new(),
-            auth_ttl: String::new(),
+            auth_program: TextInput::default(),
+            auth_children: TextInput::default(),
+            auth_realm: TextInput::default(),
+            auth_ttl: TextInput::default(),
             auth_field: InputField::AuthProgram,
         };
         app.load_auth_fields();
@@ -157,15 +158,22 @@ impl App {
     }
 
     fn load_auth_fields(&mut self) {
-        self.auth_program = self.config.auth_param.program.clone().unwrap_or_default();
-        self.auth_children = self.config.auth_param.children.clone().unwrap_or_default();
-        self.auth_realm = self.config.auth_param.realm.clone().unwrap_or_default();
-        self.auth_ttl = self
-            .config
-            .auth_param
-            .credentialsttl
-            .clone()
-            .unwrap_or_default();
+        self.auth_program = TextInput::new(
+            self.config.auth_param.program.clone().unwrap_or_default(),
+        );
+        self.auth_children = TextInput::new(
+            self.config.auth_param.children.clone().unwrap_or_default(),
+        );
+        self.auth_realm = TextInput::new(
+            self.config.auth_param.realm.clone().unwrap_or_default(),
+        );
+        self.auth_ttl = TextInput::new(
+            self.config
+                .auth_param
+                .credentialsttl
+                .clone()
+                .unwrap_or_default(),
+        );
     }
 
     pub fn set_status(&mut self, msg: impl Into<String>) {
@@ -288,7 +296,7 @@ impl App {
                 self.save_acl_edit();
             }
             _ => match self.edit_field {
-                InputField::Name => handle_text_input(&mut self.edit_name, key),
+                InputField::Name => self.edit_name.handle_key(key),
                 InputField::Type => match key.code {
                     KeyCode::Left => {
                         if self.edit_type_index > 0 {
@@ -302,7 +310,7 @@ impl App {
                     }
                     _ => {}
                 },
-                InputField::Values => handle_text_input(&mut self.edit_values, key),
+                InputField::Values => self.edit_values.handle_key(key),
                 InputField::CaseInsensitive
                     if (key.code == KeyCode::Char(' ') || key.code == KeyCode::Enter) =>
                 {
@@ -520,12 +528,12 @@ impl App {
                     if let Some(idx) = self.acl_table_state.selected()
                         && let Some(acl) = self.config.acls.get(idx)
                     {
-                        self.edit_name = acl.name.clone();
+                        self.edit_name.set(acl.name.clone());
                         self.edit_type_index = AclType::ALL
                             .iter()
                             .position(|t| t == &acl.acl_type)
                             .unwrap_or(0);
-                        self.edit_values = acl.values.join("\n");
+                        self.edit_values.set(acl.values.join("\n"));
                         self.edit_case_insensitive = acl.case_insensitive;
                         self.edit_field = InputField::Name;
                         self.screen = Screen::AclEdit { index: Some(idx) };
@@ -670,7 +678,7 @@ impl App {
     }
 
     fn save_acl_edit(&mut self) {
-        let name = self.edit_name.trim().to_string();
+        let name = self.edit_name.value().trim().to_string();
         if name.is_empty() {
             self.set_status("ACL name cannot be empty");
             return;
@@ -679,6 +687,7 @@ impl App {
         let acl_type = AclType::ALL[self.edit_type_index].clone();
         let values: Vec<String> = self
             .edit_values
+            .value()
             .lines()
             .map(|l| l.trim().to_string())
             .filter(|l| !l.is_empty())
@@ -687,6 +696,13 @@ impl App {
         if values.is_empty() {
             self.set_status("ACL must have at least one value");
             return;
+        }
+
+        for val in &values {
+            if let Err(e) = crate::validate::validate_acl_value(&acl_type, val) {
+                self.set_status(format!("Validation: {e}"));
+                return;
+            }
         }
 
         let acl = Acl {
@@ -774,15 +790,23 @@ impl App {
             }
         }
 
-        self.config.auth_param.program = opt(&self.auth_program);
-        self.config.auth_param.children = opt(&self.auth_children);
-        self.config.auth_param.realm = opt(&self.auth_realm);
-        self.config.auth_param.credentialsttl = opt(&self.auth_ttl);
+        self.config.auth_param.program = opt(self.auth_program.value());
+        self.config.auth_param.children = opt(self.auth_children.value());
+        self.config.auth_param.realm = opt(self.auth_realm.value());
+        self.config.auth_param.credentialsttl = opt(self.auth_ttl.value());
         self.dirty = true;
         self.set_status("Auth configuration saved");
     }
 
     fn save_config(&mut self) {
+        if self.file_path.exists() {
+            let backup = self.file_path.with_extension("conf.bak");
+            if let Err(e) = std::fs::copy(&self.file_path, &backup) {
+                self.set_status(format!("Backup failed: {e}"));
+                return;
+            }
+        }
+
         let content = crate::writer::write_config(&self.config);
         match std::fs::write(&self.file_path, &content) {
             Ok(()) => {
@@ -838,18 +862,8 @@ impl App {
                     InputField::AuthTtl => &mut self.auth_ttl,
                     _ => return,
                 };
-                handle_text_input(field, key);
+                field.handle_key(key);
             }
         }
-    }
-}
-
-fn handle_text_input(buffer: &mut String, key: KeyEvent) {
-    match key.code {
-        KeyCode::Char(c) => buffer.push(c),
-        KeyCode::Backspace => {
-            buffer.pop();
-        }
-        _ => {}
     }
 }

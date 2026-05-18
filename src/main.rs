@@ -1,8 +1,10 @@
 mod app;
 mod help;
+mod input;
 mod model;
 mod parser;
 mod ui;
+mod validate;
 mod writer;
 
 use std::io;

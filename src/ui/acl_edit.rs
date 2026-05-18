@@ -3,6 +3,7 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 
 use crate::app::{App, InputField};
 use crate::help;
+use crate::input::TextInput;
 use crate::model::AclType;
 
 pub fn draw(frame: &mut Frame, app: &App, area: Rect) {
@@ -32,7 +33,8 @@ fn draw_form(frame: &mut Frame, app: &App, area: Rect) {
 
     // Name field
     let name_style = field_style(app.edit_field == InputField::Name);
-    let name = Paragraph::new(app.edit_name.as_str()).block(
+    let name_text = render_input(&app.edit_name, app.edit_field == InputField::Name);
+    let name = Paragraph::new(name_text).block(
         Block::default()
             .borders(Borders::ALL)
             .title("Name")
@@ -54,7 +56,8 @@ fn draw_form(frame: &mut Frame, app: &App, area: Rect) {
 
     // Values field
     let values_style = field_style(app.edit_field == InputField::Values);
-    let values = Paragraph::new(app.edit_values.as_str()).block(
+    let values_text = render_input(&app.edit_values, app.edit_field == InputField::Values);
+    let values = Paragraph::new(values_text).block(
         Block::default()
             .borders(Borders::ALL)
             .title("Values (one per line)")
@@ -91,5 +94,17 @@ fn field_style(focused: bool) -> Style {
         Style::default().fg(Color::Yellow)
     } else {
         Style::default().fg(Color::White)
+    }
+}
+
+pub fn render_input<'a>(input: &'a TextInput, focused: bool) -> Line<'a> {
+    if focused {
+        Line::from(vec![
+            Span::raw(input.before_cursor()),
+            Span::styled("▎", Style::default().fg(Color::Yellow)),
+            Span::raw(input.after_cursor()),
+        ])
+    } else {
+        Line::from(input.value())
     }
 }
