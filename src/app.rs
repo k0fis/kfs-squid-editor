@@ -774,22 +774,34 @@ impl App {
     }
 
     pub fn handle_auth_key(&mut self, key: KeyEvent) {
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            match key.code {
+                KeyCode::Char('q') => {
+                    if self.dirty {
+                        self.screen = Screen::ConfirmQuit;
+                    } else {
+                        self.should_quit = true;
+                    }
+                    return;
+                }
+                KeyCode::Char('s') => {
+                    self.save_config();
+                    return;
+                }
+                _ => {}
+            }
+        }
+
         match key.code {
+            KeyCode::Char('?') | KeyCode::F(1) => self.help_visible = true,
+            KeyCode::Esc => self.tab = self.tab.next(),
+            KeyCode::BackTab => self.tab = self.tab.prev(),
             KeyCode::Tab => {
                 self.auth_field = match self.auth_field {
                     InputField::AuthProgram => InputField::AuthChildren,
                     InputField::AuthChildren => InputField::AuthRealm,
                     InputField::AuthRealm => InputField::AuthTtl,
                     InputField::AuthTtl => InputField::AuthProgram,
-                    _ => InputField::AuthProgram,
-                };
-            }
-            KeyCode::BackTab => {
-                self.auth_field = match self.auth_field {
-                    InputField::AuthProgram => InputField::AuthTtl,
-                    InputField::AuthChildren => InputField::AuthProgram,
-                    InputField::AuthRealm => InputField::AuthChildren,
-                    InputField::AuthTtl => InputField::AuthRealm,
                     _ => InputField::AuthProgram,
                 };
             }
