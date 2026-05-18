@@ -576,7 +576,10 @@ impl App {
                     {
                         self.config.acls.remove(idx);
                         self.dirty = true;
-                        self.fix_selection(&mut self.acl_table_state.clone(), self.config.acls.len());
+                        self.fix_selection(
+                            &mut self.acl_table_state.clone(),
+                            self.config.acls.len(),
+                        );
                         self.set_status("ACL deleted");
                     }
                 } else if let Some(idx) = self.access_table_state.selected()
@@ -584,7 +587,10 @@ impl App {
                 {
                     self.config.http_access.remove(idx);
                     self.dirty = true;
-                    self.fix_selection(&mut self.access_table_state.clone(), self.config.http_access.len());
+                    self.fix_selection(
+                        &mut self.access_table_state.clone(),
+                        self.config.http_access.len(),
+                    );
                     self.set_status("Access rule deleted");
                 }
             }
