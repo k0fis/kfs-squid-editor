@@ -1,0 +1,37 @@
+[package]
+name = "kfs-squid-editor"
+version = "0.1.0"
+edition = "2024"
+authors = ["k0fis"]
+description = "TUI editor for Squid proxy configuration"
+license = "MIT"
+repository = "https://github.com/k0fis/kfs-squid-editor"
+keywords = ["squid", "proxy", "tui", "editor", "configuration"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+ratatui = "0.29"
+crossterm = "0.28"
+
+[package.metadata.deb]
+maintainer = "k0fis"
+copyright = "2026, k0fis"
+extended-description = "Terminal UI editor for Squid proxy configuration files. Manages ACLs, http_access rules, authentication, and direct routing."
+section = "admin"
+priority = "optional"
+assets = [
+    ["target/release/kfs-squid-editor", "usr/bin/", "755"],
+]
+
+[package.metadata.generate-rpm]
+assets = [
+    { source = "target/release/kfs-squid-editor", dest = "/usr/bin/kfs-squid-editor", mode = "755" },
+]
+
+[package.metadata.generate-rpm.requires]
+squid = "*"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
