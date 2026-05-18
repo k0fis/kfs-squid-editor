@@ -80,7 +80,7 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         let dirty = if app.dirty { " [modified]" } else { "" };
         match &app.screen {
             Screen::List => format!(
-                " Tab:panel  Esc:next tab  a:add  e:edit  d:del  u/J:move  ?:help  Ctrl+s:save  q:quit{dirty}"
+                " a:add  e:edit  d:del  /:search  u/J:move  Ctrl+z:undo  ?:help  Ctrl+s:save{dirty}"
             ),
             Screen::AclEdit { .. } | Screen::AccessEdit { .. } | Screen::DirectEdit { .. } => {
                 format!(" Tab:field  F2:save  Esc:cancel{dirty}")

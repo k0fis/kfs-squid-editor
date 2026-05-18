@@ -93,6 +93,8 @@ pub fn help_for_screen(screen: &str) -> &'static str {
             "  d     - Delete selected item\n",
             "  u/J   - Move rule up/down (Access panel)\n",
             "  j/k   - Move selection up/down\n",
+            "  /     - Search/filter ACLs (Esc to clear)\n",
+            "  Ctrl+z/y - Undo/Redo\n",
         ),
         "auth" => concat!(
             "AUTHENTICATION (auth_param basic)\n",
@@ -111,8 +113,11 @@ pub fn help_for_screen(screen: &str) -> &'static str {
             "\n",
             "Keys:\n",
             "  Tab     - Next field\n",
-            "  Ctrl+s  - Save changes\n",
-            "  Esc     - Cancel\n",
+            "  F2      - Save changes\n",
+            "  Esc     - Next tab\n",
+            "  ←/→    - Move cursor in text field\n",
+            "  Ctrl+a/e - Jump to start/end\n",
+            "  Ctrl+z/y - Undo/Redo\n",
         ),
         "direct" => concat!(
             "DIRECT ROUTING (always_direct / never_direct)\n",
