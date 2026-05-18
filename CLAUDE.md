@@ -11,7 +11,7 @@ Written in Rust with ratatui + crossterm. Distributed as static binaries via Git
 ```bash
 cargo build                    # Dev build
 cargo build --release          # Release build
-cargo test                     # 14 unit tests (parser, writer, model)
+cargo test                     # 26 unit tests (parser, writer, model, input, validation)
 cargo clippy -- -D warnings    # Lint
 cargo fmt --check              # Format check
 ```
@@ -25,6 +25,8 @@ src/
   parser.rs     — Line-by-line squid.conf parser (strips comments, merges same-name ACLs)
   writer.rs     — Serializes SquidConfig back to clean squid.conf text
   help.rs       — Static help strings per ACL type and screen
+  input.rs      — TextInput with cursor movement (arrows, Home/End, Ctrl+A/E/U/K)
+  validate.rs   — ACL value validation by type (IP, ports, time, MAC, proto, method)
   app.rs        — App state machine, Screen/Tab enums, all keyboard handling
   ui/
     mod.rs      — Draw dispatch, tab bar, status bar, confirm dialogs
@@ -50,7 +52,7 @@ src/
 - **Rules tab**: Top panel = ACL list, Bottom panel = http_access rules. Tab switches focus.
 - **Auth tab**: Direct form editing. Tab cycles fields, F2 saves.
 - **Direct tab**: Top = always_direct, Bottom = never_direct. Tab switches focus.
-- Global: Ctrl+s save, Ctrl+q/q quit, ? help, Esc next tab, Shift+Tab prev tab
+- Global: Ctrl+s save, Ctrl+q/q quit, Ctrl+z undo, Ctrl+y redo, ? help, Esc next tab, Shift+Tab prev tab
 
 ## CI/CD
 
@@ -58,7 +60,7 @@ src/
 - `.github/workflows/release.yml` — Tag `v*`: builds 4 targets (linux amd64/arm64, macOS amd64/arm64) + .deb, creates GitHub Release
 - `update-kfs-squid-editor.sh` — Curl-based install/update script
 
-## Current State (v0.1.1)
+## Current State (v0.2.0)
 
 ### Done
 - Full parser/writer with round-trip tests
@@ -72,12 +74,12 @@ src/
 - Save/load config files
 - Dirty-check on quit
 - CI + release pipeline
+- Text input with cursor (arrow keys, Home/End, Ctrl+A/E/U/K)
+- Config file backup before overwrite (.conf.bak)
+- ACL value validation (IP/CIDR, ports, time, MAC, proto, method)
+- Undo/redo (Ctrl+Z / Ctrl+Y, 50-level history)
+- Search/filter ACL list (/ key, filters by name and type, Esc to clear)
 
 ### TODO (future)
-- Input cursor position (currently appends only, no arrow key movement in text fields)
 - Multiline text input with scrolling (for ACL values)
-- Input validation (IP format, port ranges, time format)
-- Search/filter in ACL list
-- Undo/redo
-- Config file backup before overwrite
 - Real-world testing with production squid.conf files

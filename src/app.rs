@@ -76,10 +76,15 @@ pub struct App {
     pub status_message: Option<(String, Instant)>,
     pub help_visible: bool,
 
+    // Undo/redo
+    undo_stack: Vec<SquidConfig>,
+    redo_stack: Vec<SquidConfig>,
+
     // Rules tab: top (ACLs) / bottom (http_access) focus
     pub rules_focus_acls: bool,
     pub acl_table_state: TableState,
     pub access_table_state: TableState,
+    pub acl_filter: Option<TextInput>,
 
     // Direct tab
     pub always_direct_state: TableState,
@@ -119,9 +124,12 @@ impl App {
             dirty: false,
             status_message: None,
             help_visible: false,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
             rules_focus_acls: true,
             acl_table_state: TableState::default(),
             access_table_state: TableState::default(),
+            acl_filter: None,
             always_direct_state: TableState::default(),
             never_direct_state: TableState::default(),
             direct_focus_always: true,
@@ -158,15 +166,11 @@ impl App {
     }
 
     fn load_auth_fields(&mut self) {
-        self.auth_program = TextInput::new(
-            self.config.auth_param.program.clone().unwrap_or_default(),
-        );
-        self.auth_children = TextInput::new(
-            self.config.auth_param.children.clone().unwrap_or_default(),
-        );
-        self.auth_realm = TextInput::new(
-            self.config.auth_param.realm.clone().unwrap_or_default(),
-        );
+        self.auth_program =
+            TextInput::new(self.config.auth_param.program.clone().unwrap_or_default());
+        self.auth_children =
+            TextInput::new(self.config.auth_param.children.clone().unwrap_or_default());
+        self.auth_realm = TextInput::new(self.config.auth_param.realm.clone().unwrap_or_default());
         self.auth_ttl = TextInput::new(
             self.config
                 .auth_param
@@ -178,6 +182,34 @@ impl App {
 
     pub fn set_status(&mut self, msg: impl Into<String>) {
         self.status_message = Some((msg.into(), Instant::now()));
+    }
+
+    fn snapshot(&mut self) {
+        self.undo_stack.push(self.config.clone());
+        self.redo_stack.clear();
+        if self.undo_stack.len() > 50 {
+            self.undo_stack.remove(0);
+        }
+    }
+
+    fn undo(&mut self) {
+        if let Some(prev) = self.undo_stack.pop() {
+            self.redo_stack.push(self.config.clone());
+            self.config = prev;
+            self.dirty = true;
+            self.load_auth_fields();
+            self.set_status("Undo");
+        }
+    }
+
+    fn redo(&mut self) {
+        if let Some(next) = self.redo_stack.pop() {
+            self.undo_stack.push(self.config.clone());
+            self.config = next;
+            self.dirty = true;
+            self.load_auth_fields();
+            self.set_status("Redo");
+        }
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) {
@@ -199,6 +231,14 @@ impl App {
                 }
                 KeyCode::Char('s') => {
                     self.save_config();
+                    return;
+                }
+                KeyCode::Char('z') => {
+                    self.undo();
+                    return;
+                }
+                KeyCode::Char('y') => {
+                    self.redo();
                     return;
                 }
                 _ => {}
@@ -235,20 +275,39 @@ impl App {
     }
 
     fn handle_list_key(&mut self, key: KeyEvent) {
-        match key.code {
-            KeyCode::Char('?') | KeyCode::F(1) => self.help_visible = true,
-            KeyCode::Tab => {
-                // In Rules tab, Tab switches between ACL and Access panels
-                match self.tab {
-                    Tab::Rules => {
-                        self.rules_focus_acls = !self.rules_focus_acls;
-                    }
-                    Tab::Direct => {
-                        self.direct_focus_always = !self.direct_focus_always;
-                    }
-                    _ => {}
+        if self.acl_filter.is_some() {
+            match key.code {
+                KeyCode::Esc => {
+                    self.acl_filter = None;
+                }
+                KeyCode::Enter => {
+                    // Keep filter active but stop editing
+                    // (pressing / again will resume editing)
+                }
+                _ => {
+                    self.acl_filter.as_mut().unwrap().handle_key(key);
+                    self.acl_table_state
+                        .select(if self.filtered_acl_indices().is_empty() {
+                            None
+                        } else {
+                            Some(0)
+                        });
                 }
             }
+            return;
+        }
+
+        match key.code {
+            KeyCode::Char('?') | KeyCode::F(1) => self.help_visible = true,
+            KeyCode::Tab => match self.tab {
+                Tab::Rules => {
+                    self.rules_focus_acls = !self.rules_focus_acls;
+                }
+                Tab::Direct => {
+                    self.direct_focus_always = !self.direct_focus_always;
+                }
+                _ => {}
+            },
             KeyCode::BackTab => self.tab = self.tab.prev(),
             KeyCode::Esc => self.tab = self.tab.next(),
             KeyCode::Char('q') => {
@@ -257,6 +316,9 @@ impl App {
                 } else {
                     self.should_quit = true;
                 }
+            }
+            KeyCode::Char('/') if self.tab == Tab::Rules && self.rules_focus_acls => {
+                self.acl_filter = Some(TextInput::default());
             }
             KeyCode::Char('j') | KeyCode::Down => self.move_selection(1),
             KeyCode::Char('k') | KeyCode::Up => self.move_selection(-1),
@@ -418,11 +480,39 @@ impl App {
         names
     }
 
+    pub fn filtered_acl_indices(&self) -> Vec<usize> {
+        if let Some(filter) = &self.acl_filter {
+            let query = filter.value().to_lowercase();
+            if query.is_empty() {
+                return (0..self.config.acls.len()).collect();
+            }
+            self.config
+                .acls
+                .iter()
+                .enumerate()
+                .filter(|(_, acl)| {
+                    acl.name.to_lowercase().contains(&query)
+                        || acl.acl_type.to_string().to_lowercase().contains(&query)
+                })
+                .map(|(i, _)| i)
+                .collect()
+        } else {
+            (0..self.config.acls.len()).collect()
+        }
+    }
+
+    fn real_acl_index(&self) -> Option<usize> {
+        let sel = self.acl_table_state.selected()?;
+        let indices = self.filtered_acl_indices();
+        indices.get(sel).copied()
+    }
+
     fn move_selection(&mut self, delta: i32) {
         let (state, len) = match self.tab {
             Tab::Rules => {
                 if self.rules_focus_acls {
-                    (&mut self.acl_table_state, self.config.acls.len())
+                    let filtered_len = self.filtered_acl_indices().len();
+                    (&mut self.acl_table_state, filtered_len)
                 } else {
                     (&mut self.access_table_state, self.config.http_access.len())
                 }
@@ -525,7 +615,7 @@ impl App {
         match self.tab {
             Tab::Rules => {
                 if self.rules_focus_acls {
-                    if let Some(idx) = self.acl_table_state.selected()
+                    if let Some(idx) = self.real_acl_index()
                         && let Some(acl) = self.config.acls.get(idx)
                     {
                         self.edit_name.set(acl.name.clone());
@@ -576,18 +666,23 @@ impl App {
     }
 
     fn do_delete(&mut self) {
+        self.snapshot();
         match self.tab {
             Tab::Rules => {
                 if self.rules_focus_acls {
-                    if let Some(idx) = self.acl_table_state.selected()
+                    if let Some(idx) = self.real_acl_index()
                         && idx < self.config.acls.len()
                     {
                         self.config.acls.remove(idx);
                         self.dirty = true;
-                        self.fix_selection(
-                            &mut self.acl_table_state.clone(),
-                            self.config.acls.len(),
-                        );
+                        let filtered_len = self.filtered_acl_indices().len();
+                        if filtered_len == 0 {
+                            self.acl_table_state.select(None);
+                        } else if let Some(sel) = self.acl_table_state.selected()
+                            && sel >= filtered_len
+                        {
+                            self.acl_table_state.select(Some(filtered_len - 1));
+                        }
                         self.set_status("ACL deleted");
                     }
                 } else if let Some(idx) = self.access_table_state.selected()
@@ -639,6 +734,7 @@ impl App {
     }
 
     fn move_rule(&mut self, delta: i32) {
+        self.snapshot();
         match self.tab {
             Tab::Rules if !self.rules_focus_acls => {
                 if let Some(idx) = self.access_table_state.selected() {
@@ -712,6 +808,7 @@ impl App {
             values,
         };
 
+        self.snapshot();
         if let Screen::AclEdit { index: Some(idx) } = self.screen {
             self.config.acls[idx] = acl;
             self.set_status("ACL updated");
@@ -732,6 +829,7 @@ impl App {
             return;
         }
 
+        self.snapshot();
         match self.screen.clone() {
             Screen::AccessEdit { index } => {
                 let rule = AccessRule {
@@ -790,6 +888,7 @@ impl App {
             }
         }
 
+        self.snapshot();
         self.config.auth_param.program = opt(self.auth_program.value());
         self.config.auth_param.children = opt(self.auth_children.value());
         self.config.auth_param.realm = opt(self.auth_realm.value());
@@ -832,6 +931,14 @@ impl App {
                 }
                 KeyCode::Char('s') => {
                     self.save_config();
+                    return;
+                }
+                KeyCode::Char('z') => {
+                    self.undo();
+                    return;
+                }
+                KeyCode::Char('y') => {
+                    self.redo();
                     return;
                 }
                 _ => {}
