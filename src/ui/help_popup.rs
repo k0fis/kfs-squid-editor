@@ -11,8 +11,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
     let popup_area = super::centered_rect(popup_width, popup_height, area);
 
     let screen_name = match app.tab {
-        Tab::Acls => "acl_list",
-        Tab::Access => "access_list",
+        Tab::Rules => "rules",
         Tab::Auth => "auth",
         Tab::Direct => "direct",
     };

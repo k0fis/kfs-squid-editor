@@ -8,8 +8,7 @@ use crate::model::*;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Tab {
-    Acls,
-    Access,
+    Rules,
     Auth,
     Direct,
 }
@@ -17,33 +16,30 @@ pub enum Tab {
 impl Tab {
     pub fn next(&self) -> Self {
         match self {
-            Self::Acls => Self::Access,
-            Self::Access => Self::Auth,
+            Self::Rules => Self::Auth,
             Self::Auth => Self::Direct,
-            Self::Direct => Self::Acls,
+            Self::Direct => Self::Rules,
         }
     }
 
     pub fn prev(&self) -> Self {
         match self {
-            Self::Acls => Self::Direct,
-            Self::Access => Self::Acls,
-            Self::Auth => Self::Access,
+            Self::Rules => Self::Direct,
+            Self::Auth => Self::Rules,
             Self::Direct => Self::Auth,
         }
     }
 
     pub fn title(&self) -> &'static str {
         match self {
-            Self::Acls => "ACLs",
-            Self::Access => "Access Rules",
+            Self::Rules => "ACLs & Rules",
             Self::Auth => "Auth",
             Self::Direct => "Direct",
         }
     }
 }
 
-pub const ALL_TABS: &[Tab] = &[Tab::Acls, Tab::Access, Tab::Auth, Tab::Direct];
+pub const ALL_TABS: &[Tab] = &[Tab::Rules, Tab::Auth, Tab::Direct];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Screen {
@@ -61,10 +57,8 @@ pub enum InputField {
     Type,
     Values,
     CaseInsensitive,
-    // Access edit fields
     Action,
     AclPicker,
-    // Auth fields
     AuthProgram,
     AuthChildren,
     AuthRealm,
@@ -81,9 +75,12 @@ pub struct App {
     pub status_message: Option<(String, Instant)>,
     pub help_visible: bool,
 
-    // List states
+    // Rules tab: top (ACLs) / bottom (http_access) focus
+    pub rules_focus_acls: bool,
     pub acl_table_state: TableState,
     pub access_table_state: TableState,
+
+    // Direct tab
     pub always_direct_state: TableState,
     pub never_direct_state: TableState,
     pub direct_focus_always: bool,
@@ -115,12 +112,13 @@ impl App {
         let mut app = Self {
             config,
             screen: Screen::List,
-            tab: Tab::Acls,
+            tab: Tab::Rules,
             should_quit: false,
             file_path,
             dirty: false,
             status_message: None,
             help_visible: false,
+            rules_focus_acls: true,
             acl_table_state: TableState::default(),
             access_table_state: TableState::default(),
             always_direct_state: TableState::default(),
@@ -175,14 +173,12 @@ impl App {
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) {
-        // Clear expired status messages
         if let Some((_, time)) = &self.status_message
             && time.elapsed().as_secs() > 3
         {
             self.status_message = None;
         }
 
-        // Global keys
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             match key.code {
                 KeyCode::Char('q') => {
@@ -233,8 +229,20 @@ impl App {
     fn handle_list_key(&mut self, key: KeyEvent) {
         match key.code {
             KeyCode::Char('?') | KeyCode::F(1) => self.help_visible = true,
-            KeyCode::Tab => self.tab = self.tab.next(),
+            KeyCode::Tab => {
+                // In Rules tab, Tab switches between ACL and Access panels
+                match self.tab {
+                    Tab::Rules => {
+                        self.rules_focus_acls = !self.rules_focus_acls;
+                    }
+                    Tab::Direct => {
+                        self.direct_focus_always = !self.direct_focus_always;
+                    }
+                    _ => {}
+                }
+            }
             KeyCode::BackTab => self.tab = self.tab.prev(),
+            KeyCode::Esc => self.tab = self.tab.next(),
             KeyCode::Char('q') => {
                 if self.dirty {
                     self.screen = Screen::ConfirmQuit;
@@ -404,8 +412,13 @@ impl App {
 
     fn move_selection(&mut self, delta: i32) {
         let (state, len) = match self.tab {
-            Tab::Acls => (&mut self.acl_table_state, self.config.acls.len()),
-            Tab::Access => (&mut self.access_table_state, self.config.http_access.len()),
+            Tab::Rules => {
+                if self.rules_focus_acls {
+                    (&mut self.acl_table_state, self.config.acls.len())
+                } else {
+                    (&mut self.access_table_state, self.config.http_access.len())
+                }
+            }
             Tab::Direct => {
                 if self.direct_focus_always {
                     (
@@ -443,9 +456,13 @@ impl App {
 
     fn has_selection(&self) -> bool {
         match self.tab {
-            Tab::Acls => self.acl_table_state.selected().is_some() && !self.config.acls.is_empty(),
-            Tab::Access => {
-                self.access_table_state.selected().is_some() && !self.config.http_access.is_empty()
+            Tab::Rules => {
+                if self.rules_focus_acls {
+                    self.acl_table_state.selected().is_some() && !self.config.acls.is_empty()
+                } else {
+                    self.access_table_state.selected().is_some()
+                        && !self.config.http_access.is_empty()
+                }
             }
             Tab::Direct => {
                 if self.direct_focus_always {
@@ -462,22 +479,23 @@ impl App {
 
     fn start_add(&mut self) {
         match self.tab {
-            Tab::Acls => {
-                self.edit_name.clear();
-                self.edit_type_index = 0;
-                self.edit_values.clear();
-                self.edit_case_insensitive = false;
-                self.edit_field = InputField::Name;
-                self.screen = Screen::AclEdit { index: None };
-            }
-            Tab::Access => {
-                self.access_action = AccessAction::Allow;
-                self.access_acl_refs.clear();
-                self.access_available_cursor = 0;
-                self.access_selected_cursor = 0;
-                self.access_focus_available = true;
-                self.edit_field = InputField::Action;
-                self.screen = Screen::AccessEdit { index: None };
+            Tab::Rules => {
+                if self.rules_focus_acls {
+                    self.edit_name.clear();
+                    self.edit_type_index = 0;
+                    self.edit_values.clear();
+                    self.edit_case_insensitive = false;
+                    self.edit_field = InputField::Name;
+                    self.screen = Screen::AclEdit { index: None };
+                } else {
+                    self.access_action = AccessAction::Allow;
+                    self.access_acl_refs.clear();
+                    self.access_available_cursor = 0;
+                    self.access_selected_cursor = 0;
+                    self.access_focus_available = true;
+                    self.edit_field = InputField::Action;
+                    self.screen = Screen::AccessEdit { index: None };
+                }
             }
             Tab::Direct => {
                 self.access_action = AccessAction::Allow;
@@ -497,23 +515,22 @@ impl App {
 
     fn start_edit(&mut self) {
         match self.tab {
-            Tab::Acls => {
-                if let Some(idx) = self.acl_table_state.selected()
-                    && let Some(acl) = self.config.acls.get(idx)
-                {
-                    self.edit_name = acl.name.clone();
-                    self.edit_type_index = AclType::ALL
-                        .iter()
-                        .position(|t| t == &acl.acl_type)
-                        .unwrap_or(0);
-                    self.edit_values = acl.values.join("\n");
-                    self.edit_case_insensitive = acl.case_insensitive;
-                    self.edit_field = InputField::Name;
-                    self.screen = Screen::AclEdit { index: Some(idx) };
-                }
-            }
-            Tab::Access => {
-                if let Some(idx) = self.access_table_state.selected()
+            Tab::Rules => {
+                if self.rules_focus_acls {
+                    if let Some(idx) = self.acl_table_state.selected()
+                        && let Some(acl) = self.config.acls.get(idx)
+                    {
+                        self.edit_name = acl.name.clone();
+                        self.edit_type_index = AclType::ALL
+                            .iter()
+                            .position(|t| t == &acl.acl_type)
+                            .unwrap_or(0);
+                        self.edit_values = acl.values.join("\n");
+                        self.edit_case_insensitive = acl.case_insensitive;
+                        self.edit_field = InputField::Name;
+                        self.screen = Screen::AclEdit { index: Some(idx) };
+                    }
+                } else if let Some(idx) = self.access_table_state.selected()
                     && let Some(rule) = self.config.http_access.get(idx)
                 {
                     self.access_action = rule.action.clone();
@@ -552,23 +569,22 @@ impl App {
 
     fn do_delete(&mut self) {
         match self.tab {
-            Tab::Acls => {
-                if let Some(idx) = self.acl_table_state.selected()
-                    && idx < self.config.acls.len()
-                {
-                    self.config.acls.remove(idx);
-                    self.dirty = true;
-                    self.fix_selection_after_delete(&Tab::Acls);
-                    self.set_status("ACL deleted");
-                }
-            }
-            Tab::Access => {
-                if let Some(idx) = self.access_table_state.selected()
+            Tab::Rules => {
+                if self.rules_focus_acls {
+                    if let Some(idx) = self.acl_table_state.selected()
+                        && idx < self.config.acls.len()
+                    {
+                        self.config.acls.remove(idx);
+                        self.dirty = true;
+                        self.fix_selection(&mut self.acl_table_state.clone(), self.config.acls.len());
+                        self.set_status("ACL deleted");
+                    }
+                } else if let Some(idx) = self.access_table_state.selected()
                     && idx < self.config.http_access.len()
                 {
                     self.config.http_access.remove(idx);
                     self.dirty = true;
-                    self.fix_selection_after_delete(&Tab::Access);
+                    self.fix_selection(&mut self.access_table_state.clone(), self.config.http_access.len());
                     self.set_status("Access rule deleted");
                 }
             }
@@ -593,11 +609,11 @@ impl App {
         }
     }
 
-    fn fix_selection_after_delete(&mut self, tab: &Tab) {
-        let (state, len) = match tab {
-            Tab::Acls => (&mut self.acl_table_state, self.config.acls.len()),
-            Tab::Access => (&mut self.access_table_state, self.config.http_access.len()),
-            _ => return,
+    fn fix_selection(&mut self, _state: &mut TableState, len: usize) {
+        let state = if self.rules_focus_acls {
+            &mut self.acl_table_state
+        } else {
+            &mut self.access_table_state
         };
         if len == 0 {
             state.select(None);
@@ -610,7 +626,7 @@ impl App {
 
     fn move_rule(&mut self, delta: i32) {
         match self.tab {
-            Tab::Access => {
+            Tab::Rules if !self.rules_focus_acls => {
                 if let Some(idx) = self.access_table_state.selected() {
                     let new_idx = (idx as i32 + delta)
                         .clamp(0, self.config.http_access.len() as i32 - 1)

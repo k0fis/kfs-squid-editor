@@ -1,10 +1,9 @@
 mod access_edit;
-mod access_list;
 mod acl_edit;
-mod acl_list;
 mod auth;
 mod direct;
 mod help_popup;
+mod rules;
 
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph, Tabs};
@@ -25,8 +24,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     match &app.screen {
         Screen::List => match app.tab {
-            Tab::Acls => acl_list::draw(frame, app, chunks[1]),
-            Tab::Access => access_list::draw(frame, app, chunks[1]),
+            Tab::Rules => rules::draw(frame, app, chunks[1]),
             Tab::Auth => auth::draw(frame, app, chunks[1]),
             Tab::Direct => direct::draw(frame, app, chunks[1]),
         },
@@ -53,8 +51,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
 fn draw_content_for_tab(frame: &mut Frame, app: &mut App, area: Rect) {
     match app.tab {
-        Tab::Acls => acl_list::draw(frame, app, area),
-        Tab::Access => access_list::draw(frame, app, area),
+        Tab::Rules => rules::draw(frame, app, area),
         Tab::Auth => auth::draw(frame, app, area),
         Tab::Direct => direct::draw(frame, app, area),
     }
@@ -83,7 +80,7 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         let dirty = if app.dirty { " [modified]" } else { "" };
         match &app.screen {
             Screen::List => format!(
-                " Tab:section  a:add  e:edit  d:del  u/J:move  ?:help  Ctrl+s:save  Ctrl+q:quit{dirty}"
+                " Tab:panel  Esc:next tab  a:add  e:edit  d:del  u/J:move  ?:help  Ctrl+s:save  q:quit{dirty}"
             ),
             Screen::AclEdit { .. } | Screen::AccessEdit { .. } | Screen::DirectEdit { .. } => {
                 format!(" Tab:field  F2:save  Esc:cancel{dirty}")
