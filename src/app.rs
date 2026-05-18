@@ -550,6 +550,28 @@ impl App {
         let current = state.selected().unwrap_or(0) as i32;
         let new = (current + delta).clamp(0, len as i32 - 1) as usize;
         state.select(Some(new));
+
+        if self.tab == Tab::Rules && self.rules_focus_acls {
+            self.sync_access_to_acl();
+        }
+    }
+
+    fn sync_access_to_acl(&mut self) {
+        let acl_name = self
+            .real_acl_index()
+            .and_then(|i| self.config.acls.get(i))
+            .map(|a| a.name.as_str());
+
+        if let Some(name) = acl_name {
+            let pos = self
+                .config
+                .http_access
+                .iter()
+                .position(|rule| rule.acl_refs.iter().any(|r| r.name == name));
+            if let Some(idx) = pos {
+                self.access_table_state.select(Some(idx));
+            }
+        }
     }
 
     fn has_selection(&self) -> bool {
