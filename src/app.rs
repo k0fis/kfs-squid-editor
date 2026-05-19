@@ -21,12 +21,7 @@ const MENU_STRUCTURE: &[(&str, &[(&str, &str)])] = &[
     ),
     (
         "View",
-        &[
-            ("Rules", ""),
-            ("Auth", ""),
-            ("Direct", ""),
-            ("Search", "/"),
-        ],
+        &[("Rules", ""), ("Auth", ""), ("Direct", ""), ("Search", "/")],
     ),
     ("Help", &[("Help", "F1")]),
 ];
