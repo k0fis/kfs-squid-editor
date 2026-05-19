@@ -57,18 +57,7 @@ pub fn draw(frame: &mut Frame, app: &App, area: Rect) {
     // Available ACLs
     let available_items: Vec<ListItem> = available_names
         .iter()
-        .enumerate()
-        .map(|(i, name)| {
-            let style = if app.edit_field == InputField::AclPicker
-                && app.access_focus_available
-                && i == app.access_available_cursor
-            {
-                Style::default().bg(Color::DarkGray).fg(Color::White)
-            } else {
-                Style::default()
-            };
-            ListItem::new(name.as_str()).style(style)
-        })
+        .map(|name| ListItem::new(name.as_str()))
         .collect();
 
     let available_border = if app.edit_field == InputField::AclPicker && app.access_focus_available
@@ -78,36 +67,31 @@ pub fn draw(frame: &mut Frame, app: &App, area: Rect) {
         Style::default()
     };
 
-    let available_list = List::new(available_items).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title("Available (Space=add)")
-            .border_style(available_border),
-    );
+    let available_list = List::new(available_items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Available (Space=add)")
+                .border_style(available_border),
+        )
+        .highlight_style(Style::default().bg(Color::DarkGray).fg(Color::White));
     let mut available_state = ListState::default();
-    available_state.select(Some(app.access_available_cursor));
+    if app.edit_field == InputField::AclPicker && app.access_focus_available {
+        available_state.select(Some(app.access_available_cursor));
+    }
     frame.render_stateful_widget(available_list, picker_chunks[0], &mut available_state);
 
     // Selected ACLs
     let selected_items: Vec<ListItem> = app
         .access_acl_refs
         .iter()
-        .enumerate()
-        .map(|(i, acl_ref)| {
-            let style = if app.edit_field == InputField::AclPicker
-                && !app.access_focus_available
-                && i == app.access_selected_cursor
-            {
-                Style::default().bg(Color::DarkGray).fg(Color::White)
-            } else {
-                Style::default()
-            };
+        .map(|acl_ref| {
             let text = if acl_ref.negated {
                 format!("! {} (negated)", acl_ref.name)
             } else {
                 acl_ref.name.clone()
             };
-            ListItem::new(text).style(style)
+            ListItem::new(text)
         })
         .collect();
 
@@ -118,14 +102,19 @@ pub fn draw(frame: &mut Frame, app: &App, area: Rect) {
         Style::default()
     };
 
-    let selected_list = List::new(selected_items).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title("Selected (!:negate Space:remove)")
-            .border_style(selected_border),
-    );
+    let selected_list = List::new(selected_items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Selected (!:negate Space:remove)")
+                .border_style(selected_border),
+        )
+        .highlight_style(Style::default().bg(Color::DarkGray).fg(Color::White));
     let mut selected_state = ListState::default();
-    if !app.access_acl_refs.is_empty() {
+    if app.edit_field == InputField::AclPicker
+        && !app.access_focus_available
+        && !app.access_acl_refs.is_empty()
+    {
         selected_state.select(Some(app.access_selected_cursor));
     }
     frame.render_stateful_widget(selected_list, picker_chunks[1], &mut selected_state);
