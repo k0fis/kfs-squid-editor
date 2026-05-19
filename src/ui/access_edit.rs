@@ -1,5 +1,5 @@
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
+use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
 
 use crate::app::{App, InputField};
 use crate::model::AccessAction;
@@ -84,7 +84,9 @@ pub fn draw(frame: &mut Frame, app: &App, area: Rect) {
             .title("Available (Space=add)")
             .border_style(available_border),
     );
-    frame.render_widget(available_list, picker_chunks[0]);
+    let mut available_state = ListState::default();
+    available_state.select(Some(app.access_available_cursor));
+    frame.render_stateful_widget(available_list, picker_chunks[0], &mut available_state);
 
     // Selected ACLs
     let selected_items: Vec<ListItem> = app
@@ -122,5 +124,9 @@ pub fn draw(frame: &mut Frame, app: &App, area: Rect) {
             .title("Selected (!:negate Space:remove)")
             .border_style(selected_border),
     );
-    frame.render_widget(selected_list, picker_chunks[1]);
+    let mut selected_state = ListState::default();
+    if !app.access_acl_refs.is_empty() {
+        selected_state.select(Some(app.access_selected_cursor));
+    }
+    frame.render_stateful_widget(selected_list, picker_chunks[1], &mut selected_state);
 }
