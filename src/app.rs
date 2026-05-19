@@ -7,6 +7,30 @@ use ratatui::widgets::TableState;
 use crate::input::TextInput;
 use crate::model::*;
 
+const MENU_STRUCTURE: &[(&str, &[(&str, &str)])] = &[
+    ("File", &[("Save", "Ctrl+S"), ("Quit", "Ctrl+Q")]),
+    (
+        "Edit",
+        &[
+            ("Undo", "Ctrl+Z"),
+            ("Redo", "Ctrl+Y"),
+            ("Add", "a"),
+            ("Edit", "e"),
+            ("Delete", "d"),
+        ],
+    ),
+    (
+        "View",
+        &[
+            ("Rules", ""),
+            ("Auth", ""),
+            ("Direct", ""),
+            ("Search", "/"),
+        ],
+    ),
+    ("Help", &[("Help", "F1")]),
+];
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Tab {
     Rules,
@@ -76,6 +100,11 @@ pub struct App {
     pub status_message: Option<(String, Instant)>,
     pub help_visible: bool,
 
+    // Menu bar (F9)
+    pub menu_active: bool,
+    pub menu_index: usize,
+    pub menu_item: usize,
+
     // Undo/redo
     undo_stack: Vec<SquidConfig>,
     redo_stack: Vec<SquidConfig>,
@@ -124,6 +153,9 @@ impl App {
             dirty: false,
             status_message: None,
             help_visible: false,
+            menu_active: false,
+            menu_index: 0,
+            menu_item: 0,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             rules_focus_acls: true,
@@ -212,11 +244,94 @@ impl App {
         }
     }
 
+    pub fn menu_items(&self) -> &[(&'static str, &'static [(&'static str, &'static str)])] {
+        MENU_STRUCTURE
+    }
+
+    fn handle_menu_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Esc | KeyCode::F(9) => self.menu_active = false,
+            KeyCode::Left => {
+                if self.menu_index == 0 {
+                    self.menu_index = MENU_STRUCTURE.len() - 1;
+                } else {
+                    self.menu_index -= 1;
+                }
+                self.menu_item = 0;
+            }
+            KeyCode::Right => {
+                self.menu_index = (self.menu_index + 1) % MENU_STRUCTURE.len();
+                self.menu_item = 0;
+            }
+            KeyCode::Up => {
+                let item_count = MENU_STRUCTURE[self.menu_index].1.len();
+                if self.menu_item == 0 {
+                    self.menu_item = item_count - 1;
+                } else {
+                    self.menu_item -= 1;
+                }
+            }
+            KeyCode::Down => {
+                let item_count = MENU_STRUCTURE[self.menu_index].1.len();
+                self.menu_item = (self.menu_item + 1) % item_count;
+            }
+            KeyCode::Enter => {
+                self.execute_menu_action();
+                self.menu_active = false;
+            }
+            _ => {}
+        }
+    }
+
+    fn execute_menu_action(&mut self) {
+        match (self.menu_index, self.menu_item) {
+            // File
+            (0, 0) => self.save_config(),
+            (0, 1) => {
+                if self.dirty {
+                    self.screen = Screen::ConfirmQuit;
+                } else {
+                    self.should_quit = true;
+                }
+            }
+            // Edit
+            (1, 0) => self.undo(),
+            (1, 1) => self.redo(),
+            (1, 2) => self.start_add(),
+            (1, 3) => self.start_edit(),
+            (1, 4) if self.has_selection() => {
+                self.screen = Screen::ConfirmDelete;
+            }
+            // View
+            (2, 0) => self.tab = Tab::Rules,
+            (2, 1) => self.tab = Tab::Auth,
+            (2, 2) => self.tab = Tab::Direct,
+            (2, 3) if self.tab == Tab::Rules && self.rules_focus_acls => {
+                self.acl_filter = Some(TextInput::default());
+            }
+            // Help
+            (3, 0) => self.help_visible = true,
+            _ => {}
+        }
+    }
+
     pub fn handle_key(&mut self, key: KeyEvent) {
         if let Some((_, time)) = &self.status_message
             && time.elapsed().as_secs() > 3
         {
             self.status_message = None;
+        }
+
+        if key.code == KeyCode::F(9) {
+            self.menu_active = !self.menu_active;
+            self.menu_index = 0;
+            self.menu_item = 0;
+            return;
+        }
+
+        if self.menu_active {
+            self.handle_menu_key(key);
+            return;
         }
 
         if key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -941,6 +1056,18 @@ impl App {
     }
 
     pub fn handle_auth_key(&mut self, key: KeyEvent) {
+        if key.code == KeyCode::F(9) {
+            self.menu_active = !self.menu_active;
+            self.menu_index = 0;
+            self.menu_item = 0;
+            return;
+        }
+
+        if self.menu_active {
+            self.handle_menu_key(key);
+            return;
+        }
+
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             match key.code {
                 KeyCode::Char('q') => {

@@ -44,6 +44,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     draw_status_bar(frame, app, chunks[2]);
 
+    if app.menu_active {
+        draw_menu(frame, app, chunks[0]);
+    }
+
     if app.help_visible {
         help_popup::draw(frame, app);
     }
@@ -80,7 +84,7 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         let dirty = if app.dirty { " [modified]" } else { "" };
         match &app.screen {
             Screen::List => format!(
-                " a:add  e:edit  d:del  /:search  u/J:move  Ctrl+z:undo  ?:help  Ctrl+s:save{dirty}"
+                " F9:menu  a:add  e:edit  d:del  /:search  Ctrl+z:undo  ?:help{dirty}"
             ),
             Screen::AclEdit { .. } | Screen::AccessEdit { .. } | Screen::DirectEdit { .. } => {
                 format!(" Tab:field  F2:save  Esc:cancel{dirty}")
@@ -116,4 +120,74 @@ pub fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
     let x = area.x + area.width.saturating_sub(width) / 2;
     let y = area.y + area.height.saturating_sub(height) / 2;
     Rect::new(x, y, width.min(area.width), height.min(area.height))
+}
+
+fn draw_menu(frame: &mut Frame, app: &App, tab_area: Rect) {
+    let menus = app.menu_items();
+
+    // Draw menu bar (overwrite tab bar area)
+    let mut spans = Vec::new();
+    spans.push(Span::raw(" "));
+    for (i, (title, _)) in menus.iter().enumerate() {
+        let style = if i == app.menu_index {
+            Style::default().bg(Color::Yellow).fg(Color::Black).bold()
+        } else {
+            Style::default().fg(Color::White)
+        };
+        spans.push(Span::styled(format!(" {title} "), style));
+    }
+    let bar = Paragraph::new(Line::from(spans))
+        .style(Style::default().bg(Color::DarkGray))
+        .block(Block::default());
+    frame.render_widget(bar, Rect::new(tab_area.x, tab_area.y, tab_area.width, 1));
+
+    // Draw dropdown below the selected menu title
+    let (_, items) = menus[app.menu_index];
+    let dropdown_width: u16 = items
+        .iter()
+        .map(|(label, shortcut)| label.len() + shortcut.len() + 4)
+        .max()
+        .unwrap_or(10) as u16
+        + 2;
+    let dropdown_height = items.len() as u16 + 2;
+
+    // Calculate x position of the dropdown
+    let mut x_offset: u16 = 1;
+    for (i, (title, _)) in menus.iter().enumerate() {
+        if i == app.menu_index {
+            break;
+        }
+        x_offset += title.len() as u16 + 2;
+    }
+
+    let dropdown_area = Rect::new(
+        tab_area.x + x_offset,
+        tab_area.y + 1,
+        dropdown_width.min(tab_area.width.saturating_sub(x_offset)),
+        dropdown_height,
+    );
+
+    let rows: Vec<Line> = items
+        .iter()
+        .enumerate()
+        .map(|(i, (label, shortcut))| {
+            let style = if i == app.menu_item {
+                Style::default().bg(Color::Yellow).fg(Color::Black)
+            } else {
+                Style::default().fg(Color::White)
+            };
+            let padding = dropdown_width as usize - label.len() - shortcut.len() - 4;
+            let text = format!(" {label}{:>width$}{shortcut} ", "", width = padding);
+            Line::from(Span::styled(text, style))
+        })
+        .collect();
+
+    let dropdown = Paragraph::new(rows).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::White))
+            .style(Style::default().bg(Color::DarkGray)),
+    );
+    frame.render_widget(ratatui::widgets::Clear, dropdown_area);
+    frame.render_widget(dropdown, dropdown_area);
 }
